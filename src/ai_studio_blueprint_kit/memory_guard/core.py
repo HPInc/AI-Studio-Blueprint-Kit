@@ -1,4 +1,3 @@
-# ===== memory_guard.py (single script) =====
 from __future__ import annotations
 
 import re

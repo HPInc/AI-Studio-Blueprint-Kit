@@ -1,4 +1,3 @@
-"""Top-level package for AI Studio Blueprint Kit."""
+"""AI Studio Blueprint Kit."""
 
-__all__ = ["__version__"]
 __version__ = "0.1.0"
