@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-studio-blueprint-kit"
+version = "0.1.0"
+description = "Reusable Python utilities for HP AI Studio and notebook-centric ML workflows."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Ata Turhan", email = "ata.turhan@hp.com" }
+]
+keywords = [
+  "ai",
+  "ml",
+  "notebook",
+  "jupyter",
+  "gpu",
+  "memory",
+  "vram",
+  "blueprints"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+notebook = [
+  "matplotlib>=3.8",
+  "ipython>=8.0"
+]
+torch = [
+  "torch>=2.0"
+]
+nvidia = [
+  "nvidia-ml-py>=12.0"
+]
+dev = [
+  "build>=1.2.1",
+  "pytest>=8.0",
+  "twine>=5.1.0",
+  "ruff>=0.6.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/HPInc/AI-Studio-Blueprint-Kit"
+Repository = "https://github.com/HPInc/AI-Studio-Blueprint-Kit"
+Issues = "https://github.com/HPInc/AI-Studio-Blueprint-Kit/issues"
+Discussions = "https://github.com/HPInc/AI-Studio-Blueprint-Kit/discussions"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["ai_studio_blueprint_kit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
