@@ -1,3 +1,4 @@
+# ===== memory_guard.py (single script) =====
 from __future__ import annotations
 
 import re
@@ -296,11 +297,40 @@ def _render_usage_bars(
     vram: Optional[MemoryStatus],
     min_total_ram_gb: float,
     min_total_vram_gb: float,
+    status: str,
+    message: str,
+    troubleshooting_html: str = "",
 ) -> None:
     try:
         from IPython.display import HTML, display  # type: ignore
     except Exception:
         return
+
+    status_styles = {
+        "success": {
+            "title": "System Resource Check Passed",
+            "icon": "✅",
+            "accent": "#2e7d32",
+            "background": "#0b1f12",
+            "inner_background": "rgba(255,255,255,0.06)",
+        },
+        "warning": {
+            "title": "System Resource Check Warning",
+            "icon": "⚠️",
+            "accent": "#f9a825",
+            "background": "#2a2006",
+            "inner_background": "rgba(255,255,255,0.06)",
+        },
+        "error": {
+            "title": "System Resource Check Failed",
+            "icon": "🛑",
+            "accent": "#d32f2f",
+            "background": "#240b0b",
+            "inner_background": "rgba(255,255,255,0.06)",
+        },
+    }
+
+    style = status_styles[status]
 
     def _build_row(
         name: str,
@@ -308,6 +338,7 @@ def _render_usage_bars(
         used_gb: float,
         total_gb: float,
         free_gb: float,
+        free_label: str,
     ) -> str:
         used_pct = 0.0 if total_gb <= 0 else round((used_gb / total_gb) * 100.0, 1)
 
@@ -327,7 +358,7 @@ def _render_usage_bars(
             f"        {used_gb:.2f} / {total_gb:.2f} GB used ({used_pct:.1f}%)"
             "      </div>"
             "    </div>"
-            f"    <div style='font-size:14px; color:#f3f3f3; text-align:right;'>{free_gb:.2f} GB free</div>"
+            f"    <div style='font-size:14px; color:#f3f3f3; text-align:right;'>{free_gb:.2f} GB {free_label}</div>"
             "  </div>"
             "</div>"
         )
@@ -342,32 +373,67 @@ def _render_usage_bars(
             used_gb=ram_used_gb,
             total_gb=ram.total_gb,
             free_gb=ram_free_gb,
+            free_label="free",
         )
     ]
 
-    if vram is not None:
-        vram_free_gb = vram.effective_available_gb
-        vram_used_gb = max(vram.total_gb - vram_free_gb, 0.0)
-
-        rows.append(
-            _build_row(
-                name="VRAM",
-                minimum_required_gb=min_total_vram_gb,
-                used_gb=vram_used_gb,
-                total_gb=vram.total_gb,
-                free_gb=vram_free_gb,
+    if min_total_vram_gb > 0:
+        if vram is None:
+            rows.append(
+                "<div style='margin-top:18px;'>"
+                "  <div style='display:grid; grid-template-columns:140px 260px 1fr 160px; "
+                "              gap:18px; align-items:center;'>"
+                "    <div style='font-size:16px; font-weight:700; color:#e8e8e8;'>VRAM</div>"
+                f"    <div style='font-size:14px; color:#d0d0d0;'>Minimum required: ≥ {min_total_vram_gb:.1f} GB</div>"
+                "    <div style='font-size:13px; color:#ffb300;'>Not detected</div>"
+                "    <div style='font-size:14px; color:#f3f3f3; text-align:right;'>N/A</div>"
+                "  </div>"
+                "</div>"
             )
+        else:
+            vram_free_gb = vram.effective_available_gb
+            vram_used_gb = max(vram.total_gb - vram_free_gb, 0.0)
+
+            rows.append(
+                _build_row(
+                    name="VRAM",
+                    minimum_required_gb=min_total_vram_gb,
+                    used_gb=vram_used_gb,
+                    total_gb=vram.total_gb,
+                    free_gb=vram_free_gb,
+                    free_label="free",
+                )
+            )
+
+    troubleshooting_block = (
+        ""
+        if not troubleshooting_html
+        else (
+            "<div style='margin-top:16px; font-size:14px; color:#d8d8d8;'>"
+            f"{troubleshooting_html}"
+            "</div>"
         )
+    )
 
     html = (
-        "<div style='margin-top:14px; padding:18px 20px; "
-        "            background:#1f1f1f; border:1px solid rgba(255,255,255,0.06); "
-        "            border-radius:14px; box-shadow:0 4px 14px rgba(0,0,0,0.22);'>"
-        "  <div>"
-        "    <div style='font-size:18px; font-weight:800; color:#f5f5f5;'>Current Resources</div>"
+        f"<div style='margin-top:14px; padding:18px 20px; "
+        f"            background:{style['background']}; "
+        f"            border-left:8px solid {style['accent']}; "
+        f"            border-radius:14px; box-shadow:0 6px 18px rgba(0,0,0,0.25);'>"
+        "  <div style='display:flex; align-items:center; gap:10px;'>"
+        f"    <div style='font-size:22px; line-height:1;'>{style['icon']}</div>"
+        "    <div>"
+        f"      <div style='font-size:18px; font-weight:800; margin:0; color:#f5f5f5;'>{style['title']}</div>"
+        f"      <div style='opacity:0.9; margin-top:2px; color:#dddddd;'>{message}</div>"
+        "    </div>"
         "  </div>"
-        f"  {''.join(rows)}"
-        f"  {WSL_NOTE_TEXT}"
+        f"  <div style='margin-top:12px; padding:14px 16px; background:{style['inner_background']}; "
+        "              border-radius:10px;'>"
+        "    <div style='font-size:18px; font-weight:800; color:#f5f5f5;'>Current Resources</div>"
+        f"    {''.join(rows)}"
+        f"    {WSL_NOTE_TEXT}"
+        f"    {troubleshooting_block}"
+        "  </div>"
         "</div>"
     )
 
@@ -438,22 +504,28 @@ def run_memory_check_notebook(
 
 
     if total_fail_reasons:
-        md = (
-            "<div style='border-left:6px solid #d32f2f; padding:12px;'>"
-            "<h2 style='margin:0;'>🛑 System Resource Check Failed</h2>"
-            "<div style='margin-top:10px;'>"
+        details_html = (
+            "<div style='margin-top:12px;'>"
             + "\n\n".join(total_fail_reasons)
             + "</div>"
             "<div style='margin-top:12px;'>"
             + TROUBLESHOOTING_TEXT
-            + "</div></div>"
+            + "</div>"
         )
+
         if display and Markdown:
-            display(Markdown(md))
+            _render_usage_bars(
+                ram=ram,
+                vram=vram,
+                min_total_ram_gb=min_total_ram_gb,
+                min_total_vram_gb=min_total_vram_gb,
+                status="error",
+                message="One or more required hardware thresholds are not satisfied.",
+                troubleshooting_html=details_html,
+            )
         else:
             print("SYSTEM RESOURCE CHECK FAILED\n" + "\n\n".join(total_fail_reasons) + "\n" + TROUBLESHOOTING_TEXT)
 
-        # Kernel shutdown only for total hardware insufficiency (RED)
         _shutdown_kernel()
         return
 
@@ -492,12 +564,6 @@ def run_memory_check_notebook(
     # -------------------------
     # Render YELLOW or GREEN
     # -------------------------
-    vram_lines = []
-    if min_total_vram_gb > 0:
-        if vram is None:
-            vram_lines.append(f"- Total VRAM: `Not detected` (Required: `>= {min_total_vram_gb} GB`)")
-        else:
-            vram_lines.append(f"- Free VRAM: `{vram.free_gb}/{vram.total_gb} GB` (Required Total: `>= {min_total_vram_gb} GB`)")
 
     ram_used_pct = ram.used_fraction * 100.0
     base_lines = [
@@ -516,49 +582,37 @@ def run_memory_check_notebook(
             )
 
     if low_free_reasons:
-        md = (
-            "<div style='border-left:6px solid #f9a825; padding:12px;'>"
-            "<h2 style='margin:0;'>⚠️ System Resource Check Warning</h2>"
-            "<div style='margin-top:10px;'>"
+        details_html = (
+            "<div style='margin-top:12px;'>"
             + "\n\n".join(low_free_reasons)
-            + "</div>"
-            "<div style='margin-top:12px;'><b>Current Resources</b><br>"
-            + "<br>".join(line.replace("- ", "") for line in base_lines)
-            + WSL_NOTE_TEXT
             + "</div>"
             "<div style='margin-top:12px;'>"
             + TROUBLESHOOTING_TEXT
-            + "</div></div>"
+            + "</div>"
         )
+
         if display and Markdown:
-            display(Markdown(md))
-            _render_usage_bars(ram, vram, min_total_ram_gb, min_total_vram_gb)
+            _render_usage_bars(
+                ram=ram,
+                vram=vram,
+                min_total_ram_gb=min_total_ram_gb,
+                min_total_vram_gb=min_total_vram_gb,
+                status="warning",
+                message="All required thresholds are satisfied, but currently free memory may be low.",
+                troubleshooting_html=details_html,
+            )
         else:
             print("SYSTEM RESOURCE CHECK WARNING\n" + "\n\n".join(low_free_reasons) + "\n\n" + "\n".join(base_lines))
         return
 
-    md = (
-        "<div style='border-left:8px solid #2e7d32; background:#0b1f12; padding:14px 16px; "
-        "border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.25);'>"
-        "<div style='display:flex; align-items:center; gap:10px;'>"
-        "<div style='font-size:22px; line-height:1;'>✅</div>"
-        "<div>"
-        "<div style='font-size:18px; font-weight:800; margin:0;'>System Resource Check Passed</div>"
-        "<div style='opacity:0.85; margin-top:2px;'>All required thresholds are satisfied.</div>"
-        "</div>"
-        "</div>"
-        "<div style='margin-top:12px; padding:10px 12px; background:rgba(255,255,255,0.06); "
-        "border-radius:10px;'>"
-        "<div style='font-weight:700; margin-bottom:6px;'>Current Resources</div>"
-        "<div style='line-height:1.7;'>"
-        + "<br>".join(line.replace("- ", "") for line in base_lines)
-        + WSL_NOTE_TEXT
-        + "</div>"
-        "</div>"
-        "</div>"
-    )
     if display and Markdown:
-        display(Markdown(md))
-        _render_usage_bars(ram, vram, min_total_ram_gb, min_total_vram_gb)
+        _render_usage_bars(
+            ram=ram,
+            vram=vram,
+            min_total_ram_gb=min_total_ram_gb,
+            min_total_vram_gb=min_total_vram_gb,
+            status="success",
+            message="All required thresholds are satisfied.",
+        )
     else:
         print("SYSTEM RESOURCE CHECK PASSED\n" + "\n".join(base_lines))
