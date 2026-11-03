@@ -103,6 +103,35 @@ def _check_vram_nvidia_smi_used_total() -> Optional[MemoryStatus]:
 
 def _check_host_ram_windows() -> Optional[MemoryStatus]:
     try:
+        import ctypes
+
+        class MEMORYSTATUSEX(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        stat = MEMORYSTATUSEX()
+        stat.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+        if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat)):
+            total_gb = round(stat.ullTotalPhys / (1024**3), 2)
+            avail_gb = round(stat.ullAvailPhys / (1024**3), 2)
+            return MemoryStatus(
+                free_gb=avail_gb,
+                total_gb=total_gb,
+                available_gb=avail_gb,
+            )
+    except Exception:
+        pass
+
+    try:
         # Values are in KB
         out = _run_powershell(
             "(Get-CimInstance Win32_OperatingSystem | "
@@ -113,9 +142,12 @@ def _check_host_ram_windows() -> Optional[MemoryStatus]:
         obj = json.loads(out)
         total_kb = int(obj["TotalVisibleMemorySize"])
         free_kb = int(obj["FreePhysicalMemory"])
+        free_gb = round((free_kb * 1024) / (1024**3), 2)
+        total_gb = round((total_kb * 1024) / (1024**3), 2)
         return MemoryStatus(
-            free_gb=round((free_kb * 1024) / (1024**3), 2),
-            total_gb=round((total_kb * 1024) / (1024**3), 2),
+            free_gb=free_gb,
+            total_gb=total_gb,
+            available_gb=free_gb,
         )
     except Exception:
         return None
@@ -151,24 +183,59 @@ def _mb_to_gb(value: int) -> float:
 
 
 def check_ram() -> MemoryStatus:
-    meminfo: dict[str, int] = {}
-    with open("/proc/meminfo", "r", encoding="utf-8") as f:
-        for line in f:
-            k, v = line.split(":", 1)
-            meminfo[k.strip()] = int(v.strip().split()[0])  # kB
+    import os
+    import sys
 
-    total_kb = meminfo["MemTotal"]
-    avail_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
-    free_kb = meminfo.get("MemFree", 0)
+    # 1. On Linux/WSL, inspect /proc/meminfo
+    if os.path.exists("/proc/meminfo"):
+        try:
+            meminfo: dict[str, int] = {}
+            with open("/proc/meminfo", "r", encoding="utf-8") as f:
+                for line in f:
+                    k, v = line.split(":", 1)
+                    meminfo[k.strip()] = int(v.strip().split()[0])  # kB
 
-    total_gb = round((total_kb * 1024) / (1024**3), 2)
-    available_gb = round((avail_kb * 1024) / (1024**3), 2)
-    free_gb = round((free_kb * 1024) / (1024**3), 2)
+            total_kb = meminfo["MemTotal"]
+            avail_kb = meminfo.get("MemAvailable", meminfo.get("MemFree", 0))
+            free_kb = meminfo.get("MemFree", 0)
 
-    return MemoryStatus(
-        free_gb=free_gb,
-        total_gb=total_gb,
-        available_gb=available_gb,
+            total_gb = round((total_kb * 1024) / (1024**3), 2)
+            available_gb = round((avail_kb * 1024) / (1024**3), 2)
+            free_gb = round((free_kb * 1024) / (1024**3), 2)
+
+            return MemoryStatus(
+                free_gb=free_gb,
+                total_gb=total_gb,
+                available_gb=available_gb,
+            )
+        except Exception:
+            pass
+
+    # 2. On Windows, query host RAM via Win32 API / PowerShell
+    if sys.platform == "win32" or os.name == "nt":
+        ram = _check_host_ram_windows()
+        if ram is not None:
+            return ram
+
+    # 3. Fallback: psutil if installed
+    try:
+        import psutil  # type: ignore
+
+        vm = psutil.virtual_memory()
+        total_gb = round(vm.total / (1024**3), 2)
+        free_gb = round(vm.free / (1024**3), 2)
+        available_gb = round(getattr(vm, "available", vm.free) / (1024**3), 2)
+        return MemoryStatus(
+            free_gb=free_gb,
+            total_gb=total_gb,
+            available_gb=available_gb,
+        )
+    except Exception:
+        pass
+
+    # 4. If all methods fail, raise descriptive RuntimeError
+    raise RuntimeError(
+        "Unable to determine system RAM. '/proc/meminfo' was not found and host RAM checks failed."
     )
 
 
@@ -250,7 +317,11 @@ def check_vram() -> Optional[MemoryStatus]:
     if v is not None:
         return v
 
-    return _check_vram_nvidia_smi()
+    v = _check_vram_nvidia_smi()
+    if v is not None:
+        return v
+
+    return _check_host_vram_windows()
 
 
 
